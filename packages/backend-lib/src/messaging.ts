@@ -1508,18 +1508,33 @@ export async function sendEmail({
         templateId,
       });
       const metadata = R.pick(baseMetadata, MESSAGE_METADATA_FIELDS);
+
+      // Check if this is a plaintext email via Content-Type header
+      const contentType = headers["Content-Type"] ?? headers["content-type"];
+      const isPlaintext = contentType?.toLowerCase().startsWith("text/plain");
+
+      // Process plaintext body: strip <html> wrapper tags and trim whitespace
+      const processedBody = isPlaintext
+        ? body.replace(/<\/?html>/gi, "").trim()
+        : body;
+
+      // Filter out Content-Type header as Postmark handles this internally
+      const filteredHeaders = isPlaintext
+        ? R.omit(headers, ["Content-Type", "content-type"])
+        : headers;
+
       const mailData: PostMarkRequiredFields = {
         To: to,
         From: fromWithName,
         Subject: subject,
-        HtmlBody: body,
+        ...(isPlaintext ? { TextBody: processedBody } : { HtmlBody: body }),
         ReplyTo: replyTo,
         Cc: unsplitCc,
         Bcc: unsplitBcc,
         Attachments: postmarkAttachments,
         Headers:
-          Object.keys(headers).length > 0
-            ? Object.entries(headers).map(([name, value]) => ({
+          Object.keys(filteredHeaders).length > 0
+            ? Object.entries(filteredHeaders).map(([name, value]) => ({
                 Name: name,
                 Value: value,
               }))
